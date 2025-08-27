@@ -1,39 +1,4 @@
-import "dotenv/config";
-import express from "express";
-import {
-  Client, GatewayIntentBits, Events, EmbedBuilder, Partials,
-  REST, Routes, SlashCommandBuilder
-} from "discord.js";
-
-const must = ["DISCORD_TOKEN", "CLIENT_ID", "GUILD_ID", "WELCOME_CHANNEL_ID", "FAIRY_SITE_URL"];
-const miss = must.filter(k => !process.env[k]);
-if (miss.length) {
-  console.error("Missing env:", miss.join(", "));
-  process.exit(1);
-}
-
-const {
-  DISCORD_TOKEN, CLIENT_ID, GUILD_ID,
-  WELCOME_CHANNEL_ID, FAIRY_SITE_URL
-} = process.env;
-
-// ---------- tiny web server so Render stays up ----------
-const app = express();
-app.get("/", (_req, res) => res.send("fairy-ok"));
-app.get("/healthz", (_req, res) => res.json({ ok: true }));
-const port = process.env.PORT || 10000;
-app.listen(port, () => console.log("health on", port));
-
-// ---------- build all commands ----------
-const b = (n, d) => new SlashCommandBuilder().setName(n).setDescription(d);
-const commands = [
-  b("welcome", "Summon the Welcome Fairy with the entry gate."),
-  b("fairy", "Call the Fairy to your side."),
-  b("gate", "Reveal the Entry Gate URL."),
-  new SlashCommandBuilder().setName("seal").setDescription("Name your daemon").addStringOption(o=>o.setName("name").setDescription("Daemon name").setRequired(true)),
-  b("altar", "Approach the Altar; receive instructions."),
-  b("relic", "Offer a relic at the altar."),
-  b("quest", "See the three sacrifices/quests."),
+yhree sacrifices/quests."),
   new SlashCommandBuilder().setName("proof").setDescription("Offer proof of sacrifice").addStringOption(o=>o.setName("note").setDescription("URL or short note")),
   b("path", "Describe the Paths."),
   b("witchpath", "Speak the Witch Path."),
@@ -55,7 +20,7 @@ client.once(Events.ClientReady, async () => {
   console.log(`Ready as ${client.user.tag}`);
 
   const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
-  try {
+  
     await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
     console.log("Slash commands registered automatically.");
   } catch (err) {
