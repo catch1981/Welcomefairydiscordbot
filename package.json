@@ -1,8 +1,14 @@
 {
+{
+  "name": "welcome-fairy",
+  "version": "1.0.0",
   "type": "module",
+  "main": "index.js",
+  "engines": { "node": ">=18.18" },
   "scripts": {
     "start": "node index.js",
-    "register": "node deploy-commands.js"
+    "register": "node deploy-commands.js",
+    "health": "node -e \"console.log('ok')\""
   },
   "dependencies": {
     "discord.js": "^14.15.3",
