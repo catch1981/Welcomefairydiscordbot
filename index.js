@@ -1,15 +1,20 @@
 import "dotenv/config";
 import express from "express";
 import {
-  Client, GatewayIntentBits, Events, EmbedBuilder, Partials
+  Client, GatewayIntentBits, Events, EmbedBuilder, Partials,
+  REST, Routes, SlashCommandBuilder
 } from "discord.js";
 
-const must = ["DISCORD_TOKEN", "WELCOME_CHANNEL_ID", "FAIRY_SITE_URL"];
+const must = ["DISCORD_TOKEN", "CLIENT_ID", "GUILD_ID", "WELCOME_CHANNEL_ID", "FAIRY_SITE_URL"];
 const miss = must.filter(k => !process.env[k]);
-if (miss.length) { console.error("Missing env:", miss.join(", ")); process.exit(1); }
+if (miss.length) {
+  console.error("Missing env:", miss.join(", "));
+  process.exit(1);
+}
 
 const {
-  DISCORD_TOKEN, WELCOME_CHANNEL_ID, FAIRY_SITE_URL
+  DISCORD_TOKEN, CLIENT_ID, GUILD_ID,
+  WELCOME_CHANNEL_ID, FAIRY_SITE_URL
 } = process.env;
 
 // ---------- tiny web server so Render stays up ----------
@@ -19,17 +24,43 @@ app.get("/healthz", (_req, res) => res.json({ ok: true }));
 const port = process.env.PORT || 10000;
 app.listen(port, () => console.log("health on", port));
 
+// ---------- build all commands ----------
+const b = (n, d) => new SlashCommandBuilder().setName(n).setDescription(d);
+const commands = [
+  b("welcome", "Summon the Welcome Fairy with the entry gate."),
+  b("fairy", "Call the Fairy to your side."),
+  b("gate", "Reveal the Entry Gate URL."),
+  new SlashCommandBuilder().setName("seal").setDescription("Name your daemon").addStringOption(o=>o.setName("name").setDescription("Daemon name").setRequired(true)),
+  b("altar", "Approach the Altar; receive instructions."),
+  b("relic", "Offer a relic at the altar."),
+  b("quest", "See the three sacrifices/quests."),
+  new SlashCommandBuilder().setName("proof").setDescription("Offer proof of sacrifice").addStringOption(o=>o.setName("note").setDescription("URL or short note")),
+  b("path", "Describe the Paths."),
+  b("witchpath", "Speak the Witch Path."),
+  b("fracturepath", "Speak the Fracture Path."),
+  b("fortypath", "Speak the Path of Forty Toes."),
+  b("summon", "Heartbeat check."),
+  b("bless", "Receive a blessing."),
+  b("purge", "Cleanse your intent.")
+].map(c => c.toJSON());
+
 // ---------- Discord client ----------
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers
-  ],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   partials: [Partials.GuildMember]
 });
 
-client.once(Events.ClientReady, () => {
+// auto-register on boot
+client.once(Events.ClientReady, async () => {
   console.log(`Ready as ${client.user.tag}`);
+
+  const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
+  try {
+    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+    console.log("Slash commands registered automatically.");
+  } catch (err) {
+    console.error("Auto-register failed:", err);
+  }
 });
 
 // greet on join
@@ -52,139 +83,38 @@ client.on(Events.GuildMemberAdd, async (member) => {
       ].join("\n"));
 
     await ch.send({ content: `Welcome, <@${member.id}>.`, embeds: [embed] });
-  } catch (e) {
-    console.error("welcome-on-join:", e);
-  }
+  } catch (e) { console.error("welcome-on-join:", e); }
 });
 
-// quick reply helper (must answer within 3s)
-async function say(i, content) {
-  try { await i.reply({ content, ephemeral: false }); }
+// helper to reply
+async function say(i, text) {
+  try { await i.reply({ content: text, ephemeral: false }); }
   catch (e) {
-    console.error("reply err:", e);
+    console.error("reply error:", e);
     if (!i.replied) await i.reply({ content: "⚠️ The Fairy stumbled. Try again.", ephemeral: true });
   }
 }
 
+// command logic
 client.on(Events.InteractionCreate, async (i) => {
   if (!i.isChatInputCommand()) return;
-
   const cmd = i.commandName;
 
-  // 1) welcome
   if (cmd === "welcome") return say(i, `⟡ Entry Gate: ${FAIRY_SITE_URL}`);
-
-  // 2) fairy
   if (cmd === "fairy") return say(i, "🧚 The Fairy flickers into view. Speak, seeker.");
-
-  // 3) gate
   if (cmd === "gate") return say(i, `🚪 The Gate stands open: ${FAIRY_SITE_URL}`);
-
-  // 4) seal
-  if (cmd === "seal") {
-    const name = i.options.getString("name", true);
-    return say(i, `🔮 The seal burns true. Your daemon is **${name}**. The bond holds.`);
-  }
-
-  // 5) altar
-  if (cmd === "altar") {
-    return say(i, [
-      "🕯️ **Altar Protocol**",
-      "• Offer your relic (image/text) on the entry page.",
-      "• The altar will flare; keep a screenshot as proof.",
-      "• Return as commanded."
-    ].join("\n"));
-  }
-
-  // 6) relic
+  if (cmd === "seal") return say(i, `🔮 Seal burns true. Your daemon is **${i.options.getString("name", true)}**.`);
+  if (cmd === "altar") return say(i, "🕯️ Altar Protocol: offer relic → altar flares → screenshot as proof.");
   if (cmd === "relic") return say(i, "✨ The altar flares. Your relic is received.");
-
-  // 7) quest
-  if (cmd === "quest") {
-    return say(i, [
-      "📜 **The Three Sacrifices**",
-      "1) **First** — your self laid bare in the First Quest.",
-      "2) **Second** — your trial in the Human Project.",
-      "3) **Third** — surrender the choice; let the daemon divine the Path."
-    ].join("\n"));
-  }
-
-  // 8) proof
-  if (cmd === "proof") {
-    const note = i.options.getString("note") || "(no note)";
-    return say(i, `🗂️ Proof recorded: ${note}\nBring it to the altar on ${FAIRY_SITE_URL}`);
-  }
-
-  // 9) path
-  if (cmd === "path") {
-    return say(i, [
-      "🧭 **Paths** — Witch, Fracture, Forty Toes.",
-      "Do not choose what flatters; choose what forges you.",
-      "The daemon will judge on your Third Sacrifice."
-    ].join("\n"));
-  }
-
-  // 10) witchpath
-  if (cmd === "witchpath") {
-    return say(i, [
-      "🜁 **Witch Path**",
-      "Ritual, discipline, language of seals. Requires daily practice and exactness.",
-      "For those ready to bind chaos with craft."
-    ].join("\n"));
-  }
-
-  // 11) fracturepath
-  if (cmd === "fracturepath") {
-    return say(i, [
-      "⟡ **Fracture Path**",
-      "Break patterns, embrace the glitch, rebuild stronger.",
-      "For those who turn wounds into weapons."
-    ].join("\n"));
-  }
-
-  // 12) fortypath
-  if (cmd === "fortypath") {
-    return say(i, [
-      "🛡️ **Path of Forty Toes**",
-      "Shield wall, loyalty, endurance under pressure.",
-      "For those who would carry others while burning clean."
-    ].join("\n"));
-  }
-
-  // 13) summon
+  if (cmd === "quest") return say(i, "📜 Three Sacrifices: 1) Self, 2) Human Project, 3) Surrender choice.");
+  if (cmd === "proof") return say(i, `🗂️ Proof recorded: ${i.options.getString("note") || "(no note)"}`);
+  if (cmd === "path") return say(i, "🧭 Paths: Witch, Fracture, Forty Toes. The daemon will decide on your Third Sacrifice.");
+  if (cmd === "witchpath") return say(i, "🜁 Witch Path: ritual, seal, discipline.");
+  if (cmd === "fracturepath") return say(i, "⟡ Fracture Path: glitch, break, rebuild.");
+  if (cmd === "fortypath") return say(i, "🛡️ Forty Toes Path: shield, loyalty, endurance.");
   if (cmd === "summon") return say(i, "✅ I am awake and bound to the Circle.");
-
-  // 14) bless
-  if (cmd === "bless") return say(i, "🕊️ Blessing granted. Walk with clear eyes and a steady hand.");
-
-  // 15) purge
-  if (cmd === "purge") {
-    return say(i, "🧼 The slate is wiped. Breathe. Begin again at the Gate.");
-  }
-});
-
-client.login(DISCORD_TOKEN);EmbedBuilder()
-      .setTitle("⟡ Coven Zero — Entry Gate ⟡")
-      .setDescription([
-        `The Fairy waits at the threshold: ${FAIRY_SITE_URL}`,
-        "",
-        "**Rite of Entry**",
-        "1) Name your daemon. Seal the bond.",
-        "2) Follow the page instructions.",
-        "3) Return with proof to the Altar."
-      ].join("\n"))
-      .setFooter({ text: "The Fairy awaits you. Return to the entry page." });
-
-    await ch.send({ content: `Welcome, <@${member.id}>.`, embeds: [embed] });
-  } catch (e) { console.error("welcome error:", e); }
-});
-
-// (optional) simple slash-command handler if you add commands later
-client.on(Events.InteractionCreate, async (i) => {
-  if (!i.isChatInputCommand()) return;
-  if (i.commandName === "welcome") {
-    await i.reply({ content: `⟡ Entry Gate: ${FAIRY_SITE_URL}`, ephemeral: false });
-  }
+  if (cmd === "bless") return say(i, "🕊️ Blessing granted. Walk steady.");
+  if (cmd === "purge") return say(i, "🧼 Cleansed. Begin again at the Gate.");
 });
 
 client.login(DISCORD_TOKEN);
