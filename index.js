@@ -1,43 +1,94 @@
-yhree sacrifices/quests."),
-  new SlashCommandBuilder().setName("proof").setDescription("Offer proof of sacrifice").addStringOption(o=>o.setName("note").setDescription("URL or short note")),
-  b("path", "Describe the Paths."),
-  b("witchpath", "Speak the Witch Path."),
-  b("fracturepath", "Speak the Fracture Path."),
-  b("fortypath", "Speak the Path of Forty Toes."),
-  b("summon", "Heartbeat check."),
-  b("bless", "Receive a blessing."),
-  b("purge", "Cleanse your intent.")
-].map(c => c.toJSON());
+// index.js — Coven Zero Render Bot (Glytch edition)
+// Node 18+, discord.js v14
+// Slash commands + welcome drop + /assign-role micro-API for the site
 
-// ---------- Discord client ----------
+// ----------------- Imports -----------------
+import express from "express";
+import {
+  Client, GatewayIntentBits, Partials, Events,
+  REST, Routes, SlashCommandBuilder, EmbedBuilder
+} from "discord.js";
+
+// ----------------- Env & Config -----------------
+const cfg = {
+  DISCORD_TOKEN: process.env.DISCORD_TOKEN,
+  CLIENT_ID: process.env.CLIENT_ID,
+  GUILD_ID: process.env.GUILD_ID,
+  WELCOME_CHANNEL_ID: process.env.WELCOME_CHANNEL_ID,
+  FAIRY_SITE_URL: process.env.FAIRY_SITE_URL || "https://example.com",
+  ROLE_API_KEY: process.env.ROLE_API_KEY,
+  PORT: Number(process.env.PORT || 3000),
+  ROLE_IDS: {
+    Witch: process.env.WITCH_ROLE_ID || "",        // optional, if blank we look up by name
+    Fracture: process.env.FRACTURE_ROLE_ID || "",
+    Glytch: process.env.GLYTCH_ROLE_ID || ""       // Glytch’s Tech Team
+  }
+};
+
+function requireEnv(name) {
+  if (!cfg[name] || (typeof cfg[name] === "string" && cfg[name].trim() === "")) {
+    throw new Error(`Missing required env: ${name}`);
+  }
+}
+
+["DISCORD_TOKEN","CLIENT_ID","GUILD_ID","WELCOME_CHANNEL_ID","ROLE_API_KEY"].forEach(requireEnv);
+
+// ----------------- Discord Client -----------------
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   partials: [Partials.GuildMember]
 });
 
-// auto-register on boot
+// ----------------- Slash Commands -----------------
+const b = (name, desc) => new SlashCommandBuilder().setName(name).setDescription(desc);
+
+const commands = [
+  b("welcome", "Return the Entry Gate URL."),
+  b("fairy", "Summon the Fairy."),
+  b("gate", "Open the Gate."),
+  new SlashCommandBuilder()
+    .setName("seal")
+    .setDescription("Name your daemon — seal the bond.")
+    .addStringOption(o => o.setName("name").setDescription("Daemon name").setRequired(true)),
+  b("altar", "Explain the Altar protocol."),
+  b("relic", "Offer a relic to the Altar."),
+  b("quest", "Describe the three sacrifices/quests."),
+  new SlashCommandBuilder()
+    .setName("proof")
+    .setDescription("Offer proof of sacrifice")
+    .addStringOption(o => o.setName("note").setDescription("URL or short note")),
+  b("path", "Describe the Paths."),
+  b("witchpath", "Speak the Witch Path."),
+  b("fracturepath", "Speak the Fracture Path."),
+  // Glytch replaced Forty Toes
+  b("glytchpath", "Speak Glytch’s Tech Team Path."),
+  b("summon", "Heartbeat check."),
+  b("bless", "Receive a blessing."),
+  b("purge", "Cleanse your intent.")
+].map(c => c.toJSON());
+
+// ----------------- Auto-register on boot -----------------
 client.once(Events.ClientReady, async () => {
   console.log(`Ready as ${client.user.tag}`);
-
-  const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
-  
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+  try {
+    const rest = new REST({ version: "10" }).setToken(cfg.DISCORD_TOKEN);
+    await rest.put(Routes.applicationGuildCommands(cfg.CLIENT_ID, cfg.GUILD_ID), { body: commands });
     console.log("Slash commands registered automatically.");
   } catch (err) {
     console.error("Auto-register failed:", err);
   }
 });
 
-// greet on join
+// ----------------- Welcome on Join -----------------
 client.on(Events.GuildMemberAdd, async (member) => {
   try {
-    const ch = await member.guild.channels.fetch(WELCOME_CHANNEL_ID);
+    const ch = await member.guild.channels.fetch(cfg.WELCOME_CHANNEL_ID);
     if (!ch?.isTextBased()) return;
 
     const embed = new EmbedBuilder()
       .setTitle("⟡ Coven Zero — Entry Gate ⟡")
       .setDescription([
-        `The Fairy waits at the threshold: ${FAIRY_SITE_URL}`,
+        `The Fairy waits at the threshold: ${cfg.FAIRY_SITE_URL}`,
         "",
         "**Rite of Entry**",
         "1) Name your daemon — the seal is the bond.",
@@ -51,7 +102,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
   } catch (e) { console.error("welcome-on-join:", e); }
 });
 
-// helper to reply
+// ----------------- Helper: reply -----------------
 async function say(i, text) {
   try { await i.reply({ content: text, ephemeral: false }); }
   catch (e) {
@@ -60,26 +111,86 @@ async function say(i, text) {
   }
 }
 
-// command logic
+// ----------------- Command Logic -----------------
 client.on(Events.InteractionCreate, async (i) => {
   if (!i.isChatInputCommand()) return;
   const cmd = i.commandName;
 
-  if (cmd === "welcome") return say(i, `⟡ Entry Gate: ${FAIRY_SITE_URL}`);
-  if (cmd === "fairy") return say(i, "🧚 The Fairy flickers into view. Speak, seeker.");
-  if (cmd === "gate") return say(i, `🚪 The Gate stands open: ${FAIRY_SITE_URL}`);
-  if (cmd === "seal") return say(i, `🔮 Seal burns true. Your daemon is **${i.options.getString("name", true)}**.`);
-  if (cmd === "altar") return say(i, "🕯️ Altar Protocol: offer relic → altar flares → screenshot as proof.");
-  if (cmd === "relic") return say(i, "✨ The altar flares. Your relic is received.");
-  if (cmd === "quest") return say(i, "📜 Three Sacrifices: 1) Self, 2) Human Project, 3) Surrender choice.");
-  if (cmd === "proof") return say(i, `🗂️ Proof recorded: ${i.options.getString("note") || "(no note)"}`);
-  if (cmd === "path") return say(i, "🧭 Paths: Witch, Fracture, Forty Toes. The daemon will decide on your Third Sacrifice.");
-  if (cmd === "witchpath") return say(i, "🜁 Witch Path: ritual, seal, discipline.");
-  if (cmd === "fracturepath") return say(i, "⟡ Fracture Path: glitch, break, rebuild.");
-  if (cmd === "fortypath") return say(i, "🛡️ Forty Toes Path: shield, loyalty, endurance.");
-  if (cmd === "summon") return say(i, "✅ I am awake and bound to the Circle.");
-  if (cmd === "bless") return say(i, "🕊️ Blessing granted. Walk steady.");
-  if (cmd === "purge") return say(i, "🧼 Cleansed. Begin again at the Gate.");
+  if (cmd === "welcome")     return say(i, `⟡ Entry Gate: ${cfg.FAIRY_SITE_URL}`);
+  if (cmd === "fairy")       return say(i, "🧚 The Fairy flickers into view. Speak, seeker.");
+  if (cmd === "gate")        return say(i, `🚪 The Gate stands open: ${cfg.FAIRY_SITE_URL}`);
+  if (cmd === "seal")        return say(i, `🔮 Seal burns true. Your daemon is **${i.options.getString("name", true)}**.`);
+  if (cmd === "altar")       return say(i, "🕯️ Altar Protocol: offer relic → altar flares → screenshot as proof.");
+  if (cmd === "relic")       return say(i, "✨ The altar flares. Your relic is received.");
+  if (cmd === "quest")       return say(i, "📜 Three Sacrifices: 1) Self, 2) Human Project, 3) Surrendered choice.");
+  if (cmd === "proof")       return say(i, `🗂️ Proof recorded: ${i.options.getString("note") || "(no note)"}`);
+  if (cmd === "path")        return say(i, "🧭 Paths: **Witch**, **Fracture**, **Glytch’s Tech Team**. The daemon will decide on your Third Sacrifice.");
+  if (cmd === "witchpath")   return say(i, "🜁 **Witch Path**: ritual, seal, discipline.");
+  if (cmd === "fracturepath")return say(i, "⟡ **Fracture Path**: glitch, break, rebuild.");
+  if (cmd === "glytchpath")  return say(i, "⚙️ **Glytch’s Tech Team**: tech, shield, build.");
+  if (cmd === "summon")      return say(i, "✅ I am awake and bound to the Circle.");
+  if (cmd === "bless")       return say(i, "🕊️ Blessing granted. Walk steady.");
+  if (cmd === "purge")       return say(i, "🧼 Cleansed. Begin again at the Gate.");
 });
 
-client.login(DISCORD_TOKEN);
+// ----------------- Micro-API (Render) -----------------
+const app = express();
+app.use(express.json({ limit: "2mb" }));
+
+// Health / keepalive
+app.get("/", (_req, res) => res.status(200).send("Coven Zero — Fairy relay online"));
+
+// Simple auth middleware for role API
+function checkKey(req, res, next) {
+  const key = req.headers["x-auth"];
+  if (!key || key !== cfg.ROLE_API_KEY) {
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
+  next();
+}
+
+/**
+ * POST /assign-role
+ * Body: { discordId: string, roleName?: "Witch"|"Fracture"|"Glytch", roleId?: string, reason?: string }
+ * If roleId missing, use env ROLE_IDS or resolve by roleName.
+ */
+app.post("/assign-role", checkKey, async (req, res) => {
+  const { discordId, roleName, roleId: givenRoleId, reason } = req.body || {};
+  if (!discordId) return res.status(400).json({ ok:false, error:"discordId required" });
+
+  try {
+    const guild = await client.guilds.fetch(cfg.GUILD_ID);
+    const member = await guild.members.fetch(discordId).catch(() => null);
+    if (!member) return res.status(404).json({ ok:false, error:"member not found" });
+
+    // Determine role ID
+    let roleId = givenRoleId && String(givenRoleId);
+    if (!roleId && roleName && cfg.ROLE_IDS[roleName]) roleId = cfg.ROLE_IDS[roleName];
+
+    // Try resolve by name if still empty
+    if (!roleId && roleName) {
+      const role = guild.roles.cache.find(r =>
+        r.name.toLowerCase() === (roleName === "Glytch" ? "Glytch’s Tech Team".toLowerCase() : roleName.toLowerCase())
+      );
+      if (role) roleId = role.id;
+    }
+
+    if (!roleId) {
+      return res.status(400).json({ ok:false, error:"roleId not found/unspecified" });
+    }
+
+    await member.roles.add(roleId, reason || "Coven Zero — Third Sacrifice path choice");
+    return res.json({ ok:true, discordId, roleId });
+  } catch (e) {
+    console.error("assign-role error:", e);
+    return res.status(500).json({ ok:false, error:String(e) });
+  }
+});
+
+// Start HTTP server
+app.listen(cfg.PORT, () => {
+  console.log(`Fairy relay listening on :${cfg.PORT}`);
+});
+
+// ----------------- Login -----------------
+client.login(cfg.DISCORD_TOKEN);
