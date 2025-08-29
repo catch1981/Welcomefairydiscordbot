@@ -8,6 +8,13 @@ import {
   Client, GatewayIntentBits, Partials, Events,
   REST, Routes, SlashCommandBuilder, EmbedBuilder
 } from "discord.js";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Resolve __dirname for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
 
 // ----------------- Env & Config -----------------
 const cfg = {
@@ -22,7 +29,11 @@ const cfg = {
     Witch: process.env.WITCH_ROLE_ID || "",        // optional, if blank we look up by name
     Fracture: process.env.FRACTURE_ROLE_ID || "",
     Glytch: process.env.GLYTCH_ROLE_ID || ""       // Glytch’s Tech Team
-  }
+  },
+  // NEW: opener-on-join config
+  ALTAR_URL: process.env.ALTAR_URL || "https://your.site/altar.html",
+  OPENERVID_MODE: process.env.OPENERVID_MODE || "attach", // "attach" | "url"
+  OPENERVID_URL: process.env.OPENERVID_URL || `${process.env.RENDER_EXTERNAL_URL || ""}/opener.mp4` // used if mode=url
 };
 
 function requireEnv(name) {
@@ -79,12 +90,42 @@ client.once(Events.ClientReady, async () => {
   }
 });
 
-// ----------------- Welcome on Join -----------------
+// ----------------- Welcome on Join (video + buttons + embed) -----------------
 client.on(Events.GuildMemberAdd, async (member) => {
   try {
     const ch = await member.guild.channels.fetch(cfg.WELCOME_CHANNEL_ID);
     if (!ch?.isTextBased()) return;
 
+    // Buttons under the post
+    const components = [{
+      type: 1,
+      components: [
+        { type: 2, style: 5, label: "Enter the Coven (Altar)", url: cfg.ALTAR_URL },
+        { type: 2, style: 5, label: "Replay Intro (Web)", url: `${cfg.FAIRY_SITE_URL.replace(/\/$/, "")}/opener.html?replay` }
+      ]
+    }];
+
+    // 1) Post opener video (attach from repo root) or URL
+    if (cfg.OPENERVID_MODE === "attach") {
+      const rootVideoPath = path.join(__dirname, "opener.mp4"); // file must be in repo root
+      if (fs.existsSync(rootVideoPath)) {
+        await ch.send({
+          content: `Welcome, <@${member.id}> — the Gate opens.`,
+          files: [{ attachment: rootVideoPath, name: "opener.mp4" }],
+          components
+        });
+      } else {
+        console.error("[opener] opener.mp4 not found at repo root; posting text fallback.");
+        await ch.send({ content: `Welcome, <@${member.id}> — the Gate opens.`, components });
+      }
+    } else {
+      await ch.send({
+        content: `Welcome, <@${member.id}> — the Gate opens.\n${cfg.OPENERVID_URL}`,
+        components
+      });
+    }
+
+    // 2) Your existing welcome embed (unchanged)
     const embed = new EmbedBuilder()
       .setTitle("⟡ Coven Zero — Entry Gate ⟡")
       .setDescription([
@@ -193,4 +234,4 @@ app.listen(cfg.PORT, () => {
 });
 
 // ----------------- Login -----------------
-client.login(cfg.DISCORD_TOKEN);
+client.login(cfg.DISCORD_TOKEN).catch(e => console.error("Discord login failed:", e));
