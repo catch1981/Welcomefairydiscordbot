@@ -11,6 +11,22 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// --- keep the process alive & verbose errors ---
+process.on('unhandledRejection', (err) => {
+  console.error('UNHANDLED REJECTION:', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+process.on('warning', (w) => console.warn('NODE WARNING:', w));
+
+client.on('error', (e) => console.error('CLIENT ERROR:', e));
+client.on('shardError', (e) => console.error('SHARD ERROR:', e));
+client.on('shardDisconnect', (event, id) => console.warn(`SHARD ${id} DISCONNECT`, event?.code));
+client.on('shardReady', (id) => console.log(`SHARD ${id} READY`));
+client.on('shardResume', (id, replayed) => console.log(`SHARD ${id} RESUME (${replayed} events)`));
+
+
 // ---- __dirname for ESM ----
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = path.dirname(__filename)
