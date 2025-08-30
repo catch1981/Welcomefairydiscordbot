@@ -1,17 +1,17 @@
 {
-  "name": "welcomefairy-discord-bot",
-  "version": "1.2.0",
-  "description": "Coven Zero — Welcome Fairy Discord bot (Glytch edition)",
+  "name": "coven-zero-bot",
+  "version": "1.0.0",
   "type": "module",
+  "description": "Coven Zero Discord bot (Render-ready)",
   "main": "index.js",
   "scripts": {
-    "start": "node -r dotenv/config index.js",
-    "deploy:commands": "node deploy-commands.js"
+    "start": "node index.js",
+    "register": "node register-commands.mjs"
   },
-  "engines": { "node": ">=18.18" },
   "dependencies": {
     "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",
     "express": "^4.19.2"
-  }
+  },
+  "engines": { "node": ">=18" }
 }
